@@ -1,0 +1,8 @@
+<launch>
+
+    <rosparam command="load" file="$(find rrt)/rrt_params.yaml" />
+    <!--env name="ROSCONSOLE_CONFIG_FILE" value="$(find f110_rrt_star)/config/rosconsole_config.conf"/-->
+
+    <node pkg="rrt" name="rrt_node" type="rrt_node" output="screen"/>
+
+</launch>
