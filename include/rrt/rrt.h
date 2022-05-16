@@ -145,7 +145,7 @@ private:
     
     Node ConstructTree(Node &nearest_node,const int ,std::array<double, 2> &sampled_point);
     
-    std::pair<std::array<double, 2>, double> get_best_local_trackpoint(const std::array<double, 2> &);
+    std::pair<geometry_msgs::Pose, double> get_best_local_trackpoint(const std::array<double, 2> &);
     
     bool is_goal(Node &latest_added_node, double goal_x, double goal_y);
 
@@ -156,7 +156,8 @@ private:
     double line_cost(Node &n1, Node &n2);
     std::vector<int> near(std::vector<Node> &tree, Node &node);
 
-    void viz_point(std::array<double, 2> global_point){
+    void viz_point(std::array<double, 2> global_point)
+    {
 
         visualization_msgs::Marker point_msg;
         point_msg.header.frame_id = "map";
@@ -175,6 +176,33 @@ private:
         point_msg.color.g = 0.0;
         
         waypoint_pub_.publish(point_msg);
+        
+    }
+
+    void viz_path(std::vector<std::array<double, 2>> local_path)
+    {
+        visualization_msgs::Marker path;
+        geometry_msgs::Point point;
+
+        // path marker will be placed wrt map
+        // path marker points are wrt map
+        path.header.frame_id = "map";
+        path.type = visualization_msgs::Marker::LINE_STRIP;
+        path.scale.x = path.scale.y = 0.08;
+        path.action = visualization_msgs::Marker::ADD;
+        path.color.g = 1.0;
+        path.color.a = 1.0;
+
+        for(int i=0; i < local_path_.size(); i++)
+        {
+            // all points are wrt. base link
+            point.x = local_path_[i][0];
+            point.y = local_path_[i][1];
+            path.points.push_back(point);
+        }
+
+        line_pub_.publish(path);
+        
         
     }
 

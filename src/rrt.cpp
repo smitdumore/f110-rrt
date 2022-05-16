@@ -14,8 +14,8 @@ RRT::~RRT() {
 RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_listener_(tf_buffer_){
 
     std::string pose_topic, scan_topic, CSV_path;
-    //nh_.getParam("/gt_pose", pose_topic);
-    //nh_.getParam("/scan", scan_topic);
+    //nh_.getParam("/pose_topic", pose_topic);
+    //nh_.getParam("/scan_topic", scan_topic);
     nh_.getParam("lookahead_distance", lookahead_distance_);
     nh_.getParam("inflation_radius", inflation_radius_);
     nh_.getParam("CSV_path", CSV_path);
@@ -206,53 +206,26 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
             ROS_WARN("goal reached, backtracking");
 
+            // local path points are in map frame
             local_path_ = find_path(tree, new_node);
             
-            // visualize this local path once
-            // add another for loop
-            // dist (car to local path end point)
-            // while some tolerance follow with PP lookahead
-            // if reached break from everything
+            viz_path(local_path_);
 
-            visualization_msgs::Marker path;
-            geometry_msgs::Point point;
+            const auto trackpoint_and_distance =
+                    get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
-            path.header.frame_id = "base_link";
-            path.id = 1;
-            path.type = visualization_msgs::Marker::LINE_STRIP;
-            path.scale.x = path.scale.y = 0.08;
-            path.action = visualization_msgs::Marker::ADD;
-            path.pose.orientation.w = 1.0;
-            path.color.g = 1.0;
-            path.color.a = 1.0;
+            const auto local_trackpoint_map_frame = trackpoint_and_distance.first;
+            const double distance = trackpoint_and_distance.second;
 
-            for(int i=0; i < local_path_.size(); i++)
-            {
-                point.x = local_path_[i][0];
-                point.y = local_path_[i][1];
-                path.points.push_back(point);
-            }
+            geometry_msgs::Pose goal_way_point_car_frame;
 
-            line_pub_.publish(path);
+            tf2::doTransform(local_trackpoint_map_frame, goal_way_point_car_frame, tf_map_to_laser_);
+
+            const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
+
+            publish_corrected_speed_and_steering(steering_angle);
 
             break;
-            //ENDDDD
-
-            // const auto trackpoint_and_distance =
-            //         get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
-
-            // const auto local_trackpoint = trackpoint_and_distance.first;
-            // const double distance = trackpoint_and_distance.second;
-
-            // geometry_msgs::Pose goal_way_point_car_frame;
-
-            // tf2::doTransform(goal_way_point, goal_way_point_car_frame, tf_map_to_laser_);
-
-            // const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
-
-            // publish_corrected_speed_and_steering(steering_angle);
-
-            //break;
 
         }
         
@@ -277,6 +250,8 @@ std::array<double ,2> RRT::sample() {
     sample_point.orientation.w = 1;
     tf2::doTransform(sample_point, sample_point, tf_laser_to_map_);
 
+
+    // Sampled points are returned in map frame
     return {sample_point.position.x, sample_point.position.y};
 }
 
@@ -337,9 +312,9 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
     return path;
 }
 
-std::pair<std::array<double, 2>, double> RRT::get_best_local_trackpoint(const std::array<double, 2> &current_pose){
+std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std::array<double, 2> &current_pose){
 
-    std::array<double , 2> closest_point{};
+    geometry_msgs::Pose closest_point{};
     double closest_distance_to_current_pose =std::numeric_limits<double>::max();
     double closest_distance = std::numeric_limits<double>::max();
 
@@ -352,7 +327,8 @@ std::pair<std::array<double, 2>, double> RRT::get_best_local_trackpoint(const st
         {
             closest_distance_to_current_pose = dist;
             closest_distance = diff_distance;
-            closest_point = itr;
+            closest_point.position.x = itr[0];
+            closest_point.position.y = itr[1];
         }
     }    
     return {closest_point, closest_distance_to_current_pose};

@@ -1,7 +1,7 @@
 # Topics that RRT listens to
 # TODO: add your own
 # TODO: change this to the pose topic published particle filter
-pose_topic: "some_pose_topic"
+pose_topic: "pose"
 scan_topic: "scan"
 
 CSV_path: "/home/smit/test_ws/src/f110-rrt/data.csv"
