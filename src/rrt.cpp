@@ -13,7 +13,6 @@ RRT::~RRT() {
 // Constructor of the RRT class
 RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_listener_(tf_buffer_){
 
-    // TODO: Load parameters from yaml file, you could add your own parameters to the rrt_params.yaml file
     std::string pose_topic, scan_topic, CSV_path;
     //nh_.getParam("/gt_pose", pose_topic);
     //nh_.getParam("/scan", scan_topic);
@@ -29,7 +28,7 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     nh_.getParam("medium_speed", medium_speed_);
     nh_.getParam("low_speed", low_speed_);
 
-    // TODO: create a occupancy grid
+    // get the map
     input_map_ = *(ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("map", ros::Duration(2.0)));
 
     if(input_map_.data.empty()){
@@ -59,11 +58,9 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     // ROS pub and sub
     pf_sub_ = nh_.subscribe("gt_pose", 10, &RRT::pf_callback, this);
     scan_sub_ = nh_.subscribe("scan", 10, &RRT::scan_callback, this);
-    dynamic_map_pub_ = nh_.advertise<nav_msgs::OccupancyGrid>("dynamic_map",1);
-    point_pub_ = nh_.advertise<visualization_msgs::Marker>("show_rrt_nodes",1); 
-    line_pub_ = nh_.advertise<visualization_msgs::Marker>("show_rrt_edges",1); 
-    waypoint_pub_ = nh_.advertise<visualization_msgs::Marker>("show_waypoints",1);
-    local_point_pub_ = nh_.advertise<visualization_msgs::Marker>("show_local_waypoints",1);
+    dynamic_map_pub_ = nh_.advertise<nav_msgs::OccupancyGrid>("dynamic_map",1); 
+    line_pub_ = nh_.advertise<visualization_msgs::Marker>("show_rrt_path",1); 
+    waypoint_pub_ = nh_.advertise<visualization_msgs::Marker>("show_global_waypoints",1);
     drive_pub_ = nh_.advertise<ackermann_msgs::AckermannDriveStamped>("drive",1);
 
     //map
@@ -146,6 +143,7 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
         }
     }
 
+    // local cost map clearing 
     clear_obstacles_count_++;
     if(clear_obstacles_count_ > 10){
         for(const auto index: new_obstacles_){
@@ -169,6 +167,9 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
     const auto trackpoint = get_best_global_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
+    //publishing this point
+    viz_point(trackpoint);
+
     std::vector<Node> tree;
 
     tree.emplace_back(Node(pose_msg->pose.position.x, pose_msg->pose.position.y, -1));    
@@ -180,72 +181,78 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         //sample a node
         auto sample_node = sample();
 
+        // check collision
         if(is_collided(sample_node[0], sample_node[1])){
-            //ROS_ERROR("sample node colliding");
             continue;
         }
         
+        //get nearest node in the tree
         const int nearest_node_id = nearest(tree, sample_node); 
 
-        Node new_node = steer(tree[nearest_node_id], nearest_node_id, sample_node);
+        //add current node to the tree
+        Node new_node = ConstructTree(tree[nearest_node_id], nearest_node_id, sample_node);
 
         const auto current_node_index = tree.size();
 
+        //check if edge is collision free
         if(is_edge_collided(tree[nearest_node_id], new_node))
         {
-            //ROS_DEBUG("Sample Node Edge Colliding");
             continue;
         }
 
         tree.emplace_back(new_node);
 
-        visualization_msgs::Marker new_point;
-        init_point(&new_point);
-        pub_point(&new_point, &point_pub_,new_node.x, new_node.y, false);
-
-        visualization_msgs::Marker new_line;
-        init_line(&new_line, 0.005);
-        pub_line(&new_line, &line_pub_,new_node.x, new_node.y, tree[nearest_node_id].x, tree[nearest_node_id].y);
-
-        //here the goal is current trackpoint;
-        visualization_msgs::Marker track_point;
-        init_point(&track_point);
-        pub_point(&track_point, &waypoint_pub_,trackpoint[0], trackpoint[1], true);
-
-       
+        //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
             ROS_WARN("goal reached, backtracking");
 
             local_path_ = find_path(tree, new_node);
             
-            const auto trackpoint_and_distance =
-                    get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
+            // visualize this local path once
+            // add another for loop
+            // dist (car to local path end point)
+            // while some tolerance follow with PP lookahead
+            // if reached break from everything
 
-            const auto local_trackpoint = trackpoint_and_distance.first;
-            const double distance = trackpoint_and_distance.second;
+            visualization_msgs::Marker path;
+            geometry_msgs::Point point;
 
-            geometry_msgs::Pose goal_way_point;
-            goal_way_point.position.x = local_trackpoint[0];
-            goal_way_point.position.y = local_trackpoint[1];
-            goal_way_point.position.z = 0;
-            goal_way_point.orientation.x = 0;
-            goal_way_point.orientation.y = 0;
-            goal_way_point.orientation.z = 0;
-            goal_way_point.orientation.w = 1;
+            path.header.frame_id = "base_link";
+            path.id = 1;
+            path.type = visualization_msgs::Marker::LINE_STRIP;
+            path.scale.x = path.scale.y = 0.08;
+            path.action = visualization_msgs::Marker::ADD;
+            path.pose.orientation.w = 1.0;
+            path.color.g = 1.0;
+            path.color.a = 1.0;
 
-            visualization_msgs::Marker local_point;
-            init_point(&local_point);
-            //pub_point(&local_point, &local_point_pub_,local_trackpoint[0],local_trackpoint[1], false);
+            for(int i=0; i < local_path_.size(); i++)
+            {
+                point.x = local_path_[i][0];
+                point.y = local_path_[i][1];
+                path.points.push_back(point);
+            }
 
-            geometry_msgs::Pose goal_way_point_car_frame;
-
-            tf2::doTransform(goal_way_point, goal_way_point_car_frame, tf_map_to_laser_);
-
-            const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
-
-            publish_corrected_speed_and_steering(steering_angle);
+            line_pub_.publish(path);
 
             break;
+            //ENDDDD
+
+            // const auto trackpoint_and_distance =
+            //         get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
+
+            // const auto local_trackpoint = trackpoint_and_distance.first;
+            // const double distance = trackpoint_and_distance.second;
+
+            // geometry_msgs::Pose goal_way_point_car_frame;
+
+            // tf2::doTransform(goal_way_point, goal_way_point_car_frame, tf_map_to_laser_);
+
+            // const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
+
+            // publish_corrected_speed_and_steering(steering_angle);
+
+            //break;
 
         }
         
@@ -290,7 +297,7 @@ int RRT::nearest(std::vector<Node> &tree, std::array<double,2> &sampled_point) {
     return nearest_node;
 }
 
-Node RRT::steer(Node &nearest_node, const int nearest_node_index, std::array<double, 2> &sampled_point) {
+Node RRT::ConstructTree(Node &nearest_node, const int nearest_node_index, std::array<double, 2> &sampled_point) {
     
     const double x_diff = sampled_point[0] - nearest_node.x;
     const double y_diff = sampled_point[1] - nearest_node.y;
@@ -327,7 +334,6 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
         path.emplace_back(node_xy);
         current_node = tree[current_node.parent_index];
     }
-
     return path;
 }
 
@@ -437,9 +443,9 @@ std::array<double, 2> RRT::get_best_global_trackpoint(const std::array<double, 2
         goal_way_point.orientation.w = 1;
         tf2::doTransform(goal_way_point, goal_way_point, tf_map_to_laser_);
 
+        // making sure waypoint is in front of the car
         if(goal_way_point.position.x < 0) continue;
 
-        //WHY LOOKAHEAD MINUS ?????
         double distance = std::abs(lookahead_distance_ -
                 sqrt(pow(goal_way_point.position.x, 2)+ pow(goal_way_point.position.y, 2)));
 
@@ -481,9 +487,6 @@ bool RRT::is_edge_collided(const Node &nearest_node, const Node &new_node){
 }
 
 
-/// Returns the appropriate speed based on the steering angle
-/// @param steering_angle
-/// @return
 void RRT::publish_corrected_speed_and_steering(double steering_angle)
 {
     ackermann_msgs::AckermannDriveStamped drive_msg;

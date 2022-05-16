@@ -57,10 +57,8 @@ private:
 
     //pubs
     ros::Publisher dynamic_map_pub_;
-    ros::Publisher point_pub_;
     ros::Publisher line_pub_;
     ros::Publisher waypoint_pub_;
-    ros::Publisher local_point_pub_;
     ros::Publisher drive_pub_;
 
 
@@ -119,133 +117,68 @@ private:
     double current_x_;
     double current_y_;
 
-    // callbacks
-    // where rrt actually happens
+    //Methods
     void pf_callback(const geometry_msgs::PoseStamped::ConstPtr& pose_msg);
-    // updates occupancy grid
+    
     void scan_callback(const sensor_msgs::LaserScan::ConstPtr& scan_msg);
-    //
+    
     std::vector<int> get_expanded_row_major_indices(const double, const double);
-    //
+    
     int xy_to_grid(std::pair<double, double> );
-    //
+    
     std::pair<double, double> grid_to_xy(int );
-    //
+    
     std::array<double, 2> get_best_global_trackpoint(const std::array<double, 2>& );
-    //
+    
     int get_row_major_index(const double, const double);
-    //
+    
     bool is_collided(const double, const double);
-    //
+    
     bool is_edge_collided(const Node &nearest_node, const Node &new_node);
-    //
+    
     void publish_corrected_speed_and_steering(double );
 
     // RRT methods
     std::array<double, 2> sample();
-    //
+    
     int nearest(std::vector<Node> &tree, std::array<double,2> &sampled_point);
-    //
-    Node steer(Node &nearest_node,const int ,std::array<double, 2> &sampled_point);
-    //
+    
+    Node ConstructTree(Node &nearest_node,const int ,std::array<double, 2> &sampled_point);
+    
     std::pair<std::array<double, 2>, double> get_best_local_trackpoint(const std::array<double, 2> &);
     
     bool is_goal(Node &latest_added_node, double goal_x, double goal_y);
+
     std::vector<std::array<double ,2>> find_path(std::vector<Node> &tree, Node &latest_added_node);
+
     // RRT* methods
     double cost(std::vector<Node> &tree, Node &node);
     double line_cost(Node &n1, Node &n2);
     std::vector<int> near(std::vector<Node> &tree, Node &node);
 
-    int count=0;
+    void viz_point(std::array<double, 2> global_point){
 
-    void init_point(visualization_msgs::Marker* point_msg){
+        visualization_msgs::Marker point_msg;
+        point_msg.header.frame_id = "map";
+        point_msg.type = visualization_msgs::Marker::SPHERE;
+        point_msg.pose.orientation.w = 1.0;
+        point_msg.header.stamp = ros::Time::now();
+
+        point_msg.pose.position.x = global_point[0];
+        point_msg.pose.position.y = global_point[1];
+        point_msg.pose.position.z = 0.0;
+
+        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.08;
+        point_msg.color.a = 1.0;
+        point_msg.color.r = 0.0;
+        point_msg.color.b = 1.0;
+        point_msg.color.g = 0.0;
         
-        point_msg->header.frame_id = "map";
-        point_msg->id = 0; //count++
-        point_msg->type = visualization_msgs::Marker::SPHERE;
-        point_msg->action = visualization_msgs::Marker::ADD;
-        point_msg->pose.orientation.w = 1.0;
+        waypoint_pub_.publish(point_msg);
         
     }
 
-    void pub_point(visualization_msgs::Marker* point_msg, ros::Publisher* point_pub, 
-                double x, double y, bool trackpoint){
-
-        point_msg->header.stamp = ros::Time::now();
-
-        point_msg->pose.position.x = x;
-        point_msg->pose.position.y = y;
-        point_msg->pose.position.z = 0.0;
-
-        point_msg->scale.x = 0.08;
-        point_msg->scale.y = 0.08;
-        point_msg->scale.z = 0.08;
-
-        point_msg->color.a = 1.0;
-        point_msg->color.r = 1.0;
-        if(trackpoint){
-            point_msg->scale.x = 0.2;
-            point_msg->scale.y = 0.2;
-            point_msg->scale.z = 0.2;
-            point_msg->color.r = 0.0;
-            point_msg->color.g = 1.0;
-        }
-        point_msg->color.b = 0.0;
-
-    // Publish point_msg
-        point_pub->publish(*point_msg);
-        
-
-    }
-
-    void init_line(visualization_msgs::Marker* line_msg, double scale){
-    
-        line_msg->header.frame_id = "map";
-        line_msg->id = count++;
-        line_msg->type = visualization_msgs::Marker::LINE_LIST;
-        line_msg->action = visualization_msgs::Marker::ADD;
-        line_msg->pose.orientation.w = 1.0;
-        line_msg->scale.x = scale;
-    }
-
-    void pub_line(visualization_msgs::Marker* line_msg, ros::Publisher* line_pub, 
-                double x1, double y1, double x2, double y2){
-
-    line_msg->header.stamp = ros::Time::now();
-
-    geometry_msgs::Point p1,p2;
-    std_msgs::ColorRGBA c1 , c2;
-
-    p1.x = x1;
-    p1.y = y1;
-    p1.z = 0.0;
-
-    p2.x = x2;
-    p2.y = y2;
-    p2.z = 0.0;
-
-    c1.r = 0.0;  // 1.0=255
-    c1.g = 0.0;
-    c1.b = 1.0;
-    c1.a = 1.0;  // alpha
-
-    c2.r = 0.0;  // 1.0=255
-    c2.g = 0.0;
-    c2.b = 1.0;
-    c2.a = 1.0;  // alpha
-
-    line_msg->points.push_back(p1);
-    line_msg->points.push_back(p2);
-
-    line_msg->colors.push_back(c1);
-    line_msg->colors.push_back(c2);
-
-    // Publish line_msg
-    line_pub->publish(*line_msg);
-
-    }
-
+    //void viz_path()
     
 };
 
