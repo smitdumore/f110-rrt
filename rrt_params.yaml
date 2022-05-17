@@ -1,6 +1,3 @@
-# Topics that RRT listens to
-# TODO: add your own
-# TODO: change this to the pose topic published particle filter
 pose_topic: "pose"
 scan_topic: "scan"
 
@@ -13,9 +10,9 @@ max_rrt_iters: 100
 max_expansion_distance: 1.5
 collision_checking_points: 10
 goal_tolerance: 0.1
-local_lookahead_distance: 1.0
+local_lookahead_distance: 0.3
 
-high_speed: 2.0
-medium_speed: 1.5
-low_speed: 1.0
+high_speed: 1.0
+medium_speed: 0.7
+low_speed: 0.5
 

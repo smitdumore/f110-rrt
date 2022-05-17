@@ -67,6 +67,9 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     new_obstacles_ = {};
     new_obstacles_.reserve(2000);
     clear_obstacles_count_ = 0;
+
+    //path freezing
+    path_found_ = false;
     
     ROS_INFO("Created new RRT Object.");
 }
@@ -161,7 +164,34 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
 }
 
 void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
-    
+
+    if(path_found_ == true)
+    {
+        viz_path(local_path_, pose_msg->pose);
+               
+        const auto trackpoint_and_distance =    
+            get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
+
+        const auto local_trackpoint_map_frame = trackpoint_and_distance.first;
+        const double distance = trackpoint_and_distance.second;
+
+        geometry_msgs::Pose goal_way_point_car_frame;
+
+        tf2::doTransform(local_trackpoint_map_frame, goal_way_point_car_frame, tf_map_to_laser_);
+            
+        const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
+
+        publish_corrected_speed_and_steering(steering_angle * 0.1);
+
+        ROS_INFO_STREAM(distance);
+
+        if(distance < 0.2)
+        {
+            path_found_ = false;
+        }
+        return;
+    }
+
     current_x_ = pose_msg->pose.position.x;
     current_y_ = pose_msg->pose.position.y;
 
@@ -204,29 +234,12 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
         //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
-            ROS_WARN("goal reached, backtracking");
 
             // local path points are in map frame
             local_path_ = find_path(tree, new_node);
-            
-            viz_path(local_path_);
 
-            const auto trackpoint_and_distance =
-                    get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
-
-            const auto local_trackpoint_map_frame = trackpoint_and_distance.first;
-            const double distance = trackpoint_and_distance.second;
-
-            geometry_msgs::Pose goal_way_point_car_frame;
-
-            tf2::doTransform(local_trackpoint_map_frame, goal_way_point_car_frame, tf_map_to_laser_);
-
-            const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
-
-            publish_corrected_speed_and_steering(steering_angle);
-
-            break;
-
+            ROS_WARN("RRT path found");
+            path_found_ = true;
         }
         
     }

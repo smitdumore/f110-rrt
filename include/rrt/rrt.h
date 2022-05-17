@@ -107,6 +107,7 @@ private:
     int collision_checking_points_;
     double goal_tolerance_;
     double local_lookahead_distance_;
+    bool path_found_;
 
     //drive params
     double high_speed_;
@@ -169,7 +170,7 @@ private:
         point_msg.pose.position.y = global_point[1];
         point_msg.pose.position.z = 0.0;
 
-        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.08;
+        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.2;
         point_msg.color.a = 1.0;
         point_msg.color.r = 0.0;
         point_msg.color.b = 1.0;
@@ -179,7 +180,7 @@ private:
         
     }
 
-    void viz_path(std::vector<std::array<double, 2>> local_path)
+    void viz_path(std::vector<std::array<double, 2>> local_path, geometry_msgs::Pose curr_pose)
     {
         visualization_msgs::Marker path;
         geometry_msgs::Point point;
@@ -200,6 +201,8 @@ private:
             point.y = local_path_[i][1];
             path.points.push_back(point);
         }
+        point = curr_pose.position;
+        path.points.push_back(point);
 
         line_pub_.publish(path);
         
