@@ -7,7 +7,7 @@ CSV_path: "/home/smit/test_ws/src/f110-rrt/data.csv"
 lookahead_distance: 2.0
 inflation_radius: 3
 max_rrt_iters: 100
-max_expansion_distance: 1.5
+max_expansion_distance: 0.8
 collision_checking_points: 10
 goal_tolerance: 0.1
 local_lookahead_distance: 0.3

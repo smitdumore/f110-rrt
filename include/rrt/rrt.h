@@ -31,16 +31,18 @@
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <random>
+#include <limits>
 
 
 struct Node {
     Node() = default;
-    Node(const double x, const double y, const int parent_index) :
-        x(x), y(y), parent_index(parent_index)
+    Node(const double x, const double y, const int parent_index, double cost) :
+        x(x), y(y), parent_index(parent_index), cost(cost)
     {}
 
     double x, y;
-    int parent_index; // index of parent node in the tree vector   
+    int parent_index;
+    double cost;   
 };
 
 
@@ -61,15 +63,12 @@ private:
     ros::Publisher waypoint_pub_;
     ros::Publisher drive_pub_;
 
-
     // tf stuff
     tf::TransformListener listener;
 
     //csv
     std::vector<std::array<double, 2>> global_path_;         //array of double with size 2            vector< array(x, y) >
     std::vector<std::array<double, 2>> local_path_;
-
-    // TODO: create RRT params
 
     // random generator, use this
     std::mt19937 gen;
@@ -118,6 +117,7 @@ private:
     double current_x_;
     double current_y_;
 
+    int val_ = 0;
     //Methods
     void pf_callback(const geometry_msgs::PoseStamped::ConstPtr& pose_msg);
     
@@ -125,9 +125,13 @@ private:
     
     std::vector<int> get_expanded_row_major_indices(const double, const double);
     
-    int xy_to_grid(std::pair<double, double> );
+    // int xy_to_grid(std::pair<double, double> );
     
-    std::pair<double, double> grid_to_xy(int );
+    // std::pair<double, double> grid_to_xy(int );
+
+    //void viz_point(Node );
+
+    //void viz_path(Node, Node);
     
     std::array<double, 2> get_best_global_trackpoint(const std::array<double, 2>& );
     
@@ -144,7 +148,7 @@ private:
     
     int nearest(std::vector<Node> &tree, std::array<double,2> &sampled_point);
     
-    Node ConstructTree(Node &nearest_node,const int ,std::array<double, 2> &sampled_point);
+    Node Steer(Node &nearest_node,const int ,std::array<double, 2> &sampled_point);
     
     std::pair<geometry_msgs::Pose, double> get_best_local_trackpoint(const std::array<double, 2> &);
     
@@ -154,23 +158,28 @@ private:
 
     // RRT* methods
     double cost(std::vector<Node> &tree, Node &node);
+
     double line_cost(Node &n1, Node &n2);
+
     std::vector<int> near(std::vector<Node> &tree, Node &node);
 
-    void viz_point(std::array<double, 2> global_point)
-    {
+    void rewire(std::vector<int> neigh_vec, std::vector<Node> &tree, Node &node);
+
+    void viz_point(Node global_point)
+{
 
         visualization_msgs::Marker point_msg;
         point_msg.header.frame_id = "map";
         point_msg.type = visualization_msgs::Marker::SPHERE;
+        point_msg.id = val_++;
         point_msg.pose.orientation.w = 1.0;
         point_msg.header.stamp = ros::Time::now();
 
-        point_msg.pose.position.x = global_point[0];
-        point_msg.pose.position.y = global_point[1];
+        point_msg.pose.position.x = global_point.x;
+        point_msg.pose.position.y = global_point.y;
         point_msg.pose.position.z = 0.0;
 
-        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.2;
+        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.05;
         point_msg.color.a = 1.0;
         point_msg.color.r = 0.0;
         point_msg.color.b = 1.0;
@@ -178,38 +187,38 @@ private:
         
         waypoint_pub_.publish(point_msg);
         
-    }
+}
 
-    void viz_path(std::vector<std::array<double, 2>> local_path, geometry_msgs::Pose curr_pose)
-    {
+void viz_path(Node new_node, Node parent_node)
+{
         visualization_msgs::Marker path;
-        geometry_msgs::Point point;
 
         // path marker will be placed wrt map
         // path marker points are wrt map
         path.header.frame_id = "map";
+        path.id = val_++;
         path.type = visualization_msgs::Marker::LINE_STRIP;
-        path.scale.x = path.scale.y = 0.08;
+        path.scale.x = path.scale.y = 0.03;
         path.action = visualization_msgs::Marker::ADD;
         path.color.g = 1.0;
         path.color.a = 1.0;
 
-        for(int i=0; i < local_path_.size(); i++)
-        {
-            // all points are wrt. base link
-            point.x = local_path_[i][0];
-            point.y = local_path_[i][1];
-            path.points.push_back(point);
-        }
-        point = curr_pose.position;
-        path.points.push_back(point);
+        geometry_msgs::Point p1;
+        p1.x = new_node.x;
+        p1.y = new_node.y;
+        path.points.push_back(p1);
+
+        geometry_msgs::Point p2;
+        p2.x = parent_node.x;
+        p2.y = parent_node.y;
+        path.points.push_back(p2);
+
 
         line_pub_.publish(path);
         
-        
-    }
+}
 
-    //void viz_path()
-    
+
 };
+
 
