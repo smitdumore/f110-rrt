@@ -179,7 +179,7 @@ private:
         point_msg.pose.position.y = global_point.y;
         point_msg.pose.position.z = 0.0;
 
-        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.05;
+        point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.025;
         point_msg.color.a = 1.0;
         point_msg.color.r = 0.0;
         point_msg.color.b = 1.0;
@@ -189,7 +189,7 @@ private:
         
 }
 
-void viz_path(Node new_node, Node parent_node)
+void viz_path(std::vector<std::array<double, 2>> local_path , geometry_msgs::Pose curr_pose)
 {
         visualization_msgs::Marker path;
 
@@ -203,16 +203,17 @@ void viz_path(Node new_node, Node parent_node)
         path.color.g = 1.0;
         path.color.a = 1.0;
 
-        geometry_msgs::Point p1;
-        p1.x = new_node.x;
-        p1.y = new_node.y;
-        path.points.push_back(p1);
+        geometry_msgs::Point p;
+        for(int i=0 ; i < local_path.size(); i++)
+        {
+            
+            p.x = local_path[i][0];
+            p.y = local_path[i][1];
+            path.points.push_back(p);
+        }
 
-        geometry_msgs::Point p2;
-        p2.x = parent_node.x;
-        p2.y = parent_node.y;
-        path.points.push_back(p2);
-
+        p = curr_pose.position;
+        path.points.push_back(p);
 
         line_pub_.publish(path);
         

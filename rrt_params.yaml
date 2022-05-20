@@ -4,13 +4,13 @@ scan_topic: "scan"
 CSV_path: "/home/smit/test_ws/src/f110-rrt/data.csv"
 
 # TODO: add Parameters for RRT
-lookahead_distance: 5.0
+lookahead_distance: 2.5
 inflation_radius: 3
-max_rrt_iters: 100
-max_expansion_distance: 1.0
+max_rrt_iters: 1000
+max_expansion_distance: 1.5
 collision_checking_points: 10
-goal_tolerance: 0.01
-local_lookahead_distance: 0.3
+goal_tolerance: 0.03
+local_lookahead_distance: 1.5
 
 high_speed: 1.0
 medium_speed: 0.7

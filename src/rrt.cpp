@@ -182,6 +182,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     current_x_ = pose_msg->pose.position.x;
     current_y_ = pose_msg->pose.position.y;
 
+    // PP point
     const auto trackpoint = get_best_global_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
     //publishing this point
@@ -189,14 +190,14 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
     std::vector<Node> tree;
 
-    // setting root node cost as 0.0
+    // setting root node cost as 0.0 and parent index as -1
     tree.emplace_back(Node(pose_msg->pose.position.x, pose_msg->pose.position.y, -1, 0.0));    
 
     int count=0;
     while(count < max_rrt_iters_){
         count++;
         
-        ros::Duration(0.1).sleep();
+        ros::Duration(0.008).sleep();
 
         //sample a node
         auto sample_node = sample();
@@ -229,19 +230,27 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
         tree.emplace_back(new_node);
 
+        if(tree.size() >= max_rrt_iters_)
+        {
+            ROS_ERROR("CYCLE FOUND TREE SIZE EXCEEDED");
+            return;
+        }
+        
         //publish node 
         viz_point(new_node);
-
-        //pulish line
-        viz_path(new_node, tree[new_node.parent_index]);
-
+     
         //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
 
             // local path points are in map frame
-            //local_path_ = find_path(tree, new_node);
+            local_path_ = find_path(tree, new_node);
+
+            //pulish line
+            viz_path(local_path_ ,pose_msg->pose );
 
             ROS_WARN("RRT path found");
+            // publish tree
+
             path_found_ = true;
             return;
         }
@@ -253,7 +262,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 std::array<double ,2> RRT::sample() {
 
     std::uniform_real_distribution<>::param_type x_param(0, lookahead_distance_);
-    std::uniform_real_distribution<>::param_type y_param(-lookahead_distance_, lookahead_distance_);
+    std::uniform_real_distribution<>::param_type y_param(-lookahead_distance_/2, lookahead_distance_/2);
     x_dist.param(x_param);
     y_dist.param(y_param);
 
@@ -296,6 +305,7 @@ Node RRT::Steer(Node &nearest_node, const int nearest_node_index, std::array<dou
     const double distance = pow(pow(x_diff, 2) + pow(y_diff, 2), 0.5);
 
     Node new_node{};
+
     if(distance < max_expansion_distance_){
         new_node.x = sampled_point[0];
         new_node.y = sampled_point[1];
@@ -320,11 +330,20 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
     
     std::vector<std::array<double ,2>> path;
     Node current_node = latest_added_node;
+    int count = 0;
 
     while(current_node.parent_index != -1){
         std::array<double ,2> node_xy{current_node.x, current_node.y};
         path.emplace_back(node_xy);
         current_node = tree[current_node.parent_index];
+        
+        // CYCLE DETECTION
+        count++;
+        if(count >= max_rrt_iters_)
+        {   
+            ROS_ERROR("CYCLE FOUND IN TREE");
+            break;
+        }
     }
     return path;
 }
@@ -352,20 +371,14 @@ std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std:
 }
 
 // RRT* methods
-double RRT::cost(std::vector<Node> &tree, Node &node) {
-    // This method returns the cost associated with a node
-    // Args:
-    //    tree (std::vector<Node>): the current tree
-    //    node (Node): the node the cost is calculated for
-    // Returns:
-    //    cost (double): the cost value associated with the node
-
+double RRT::cost(std::vector<Node> &tree, Node &node)
+{
     return tree[node.parent_index].cost + line_cost (tree[node.parent_index], node);
 }
 
 void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_node)
 {
-    double min_cost = 100000; //numeric_limits<double>::max();
+    double min_cost = std::numeric_limits<double>::max();
     int min_cost_idx = -1;
 
     if(neighbor.size() == 0)
@@ -374,7 +387,7 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
         return;
     }
 
-    //FINDING MIN COST PARENT FOR NEW NODE
+    // FINDING MIN COST PARENT FOR NEW NODE
     for(int i=0 ; i< neighbor.size() ; i++)
     {
         if( is_edge_collided( new_node, tree.at( neighbor.at(i) ) ) ) 
@@ -384,7 +397,6 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
 
         double cost_i = line_cost( tree.at( neighbor.at(i) ) , new_node);
         
-
         if(tree.at(i).cost + cost_i < min_cost)
         {   
             min_cost = tree.at(i).cost + cost_i;
@@ -430,22 +442,13 @@ std::vector<int> RRT::near(std::vector<Node> &tree, Node &node) {
     return neighborhood;
 }
 
-double RRT::line_cost(Node &n1, Node &n2) {
-    // This method returns the cost of the straight line path between two nodes
-    // Args:
-    //    n1 (Node): Parent
-    //    n2 (Node): New
-    // Returns:
-    //    cost (double): the cost value associated with the path
-
-    double cost = sqrt(pow(n1.x - n2.x, 2)
-                               + pow(n1.y - n2.y, 2));
-
-    return cost;
+double RRT::line_cost(Node &n1, Node &n2) 
+{
+    return sqrt(pow(n1.x - n2.x, 2) + pow(n1.y - n2.y, 2));
 }
 
-std::vector<int> RRT::get_expanded_row_major_indices(const double x_map, const double y_map){
-
+std::vector<int> RRT::get_expanded_row_major_indices(const double x_map, const double y_map)
+{
     std::vector<int> expanded_row_major_indices;
     const auto x_index = static_cast<int>((x_map - input_map_.info.origin.position.x)/input_map_.info.resolution);
     const auto y_index = static_cast<int>((y_map - input_map_.info.origin.position.y)/input_map_.info.resolution);
