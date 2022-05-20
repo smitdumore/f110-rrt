@@ -196,7 +196,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     while(count < max_rrt_iters_){
         count++;
         
-        ros::Duration(0.3).sleep();
+        ros::Duration(0.1).sleep();
 
         //sample a node
         auto sample_node = sample();
@@ -213,8 +213,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         Node new_node = Steer(tree[nearest_node_id], nearest_node_id, sample_node);
 
         //calculate cost of the node
-        const double cost_of_node = cost(tree, new_node);
-        new_node.cost = cost_of_node;
+        new_node.cost = cost(tree, new_node);
 
         const auto current_node_index = tree.size();
 
@@ -361,21 +360,11 @@ double RRT::cost(std::vector<Node> &tree, Node &node) {
     // Returns:
     //    cost (double): the cost value associated with the node
 
-    double parent_cost = tree[node.parent_index].cost;
-
-    double curr_cost = line_cost (tree[node.parent_index], node);
-
-    double cost  = parent_cost + curr_cost;
-    return cost;
+    return tree[node.parent_index].cost + line_cost (tree[node.parent_index], node);
 }
 
 void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_node)
 {
-
-        // rewire ?? (change the parent of new_node)
-
-        // in rewire return the minimm cost node
-        // make the parent of new node the min cost node 
     double min_cost = 100000; //numeric_limits<double>::max();
     int min_cost_idx = -1;
 
@@ -385,6 +374,7 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
         return;
     }
 
+    //FINDING MIN COST PARENT FOR NEW NODE
     for(int i=0 ; i< neighbor.size() ; i++)
     {
         if( is_edge_collided( new_node, tree.at( neighbor.at(i) ) ) ) 
@@ -398,27 +388,33 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
         if(tree.at(i).cost + cost_i < min_cost)
         {   
             min_cost = tree.at(i).cost + cost_i;
-            // idx in tree
             min_cost_idx = neighbor.at(i);
         }
     }
-
     new_node.parent_index = min_cost_idx;
     new_node.cost = min_cost;
+
+    // REWIRING
+    // FIND IF NEW NODE CAN BE A LOW COST PARENT TO ANOTHER NODE ALREADY IN THE TREE 
+    for(int i=0 ; i< neighbor.size() ; i++)
+    {   
+        // skipping over current parent of new node
+        if( is_edge_collided( new_node, tree.at( neighbor.at(i))) || i == min_cost_idx ) 
+        {
+            continue;
+        }
+
+        if(tree.at(neighbor.at(i)).cost > new_node.cost + tree.at(new_node.parent_index).cost)
+        {
+            tree.at(neighbor.at(i)).parent_index = tree.size();
+        }
+    }
 }
 
 std::vector<int> RRT::near(std::vector<Node> &tree, Node &node) {
-    // This method returns the set of Nodes in the neighborhood of a 
-    // node.
-    // Args:
-    //   tree (std::vector<Node>): the current tree
-    //   node (Node): the node to find the neighborhood for
-    // Returns:
-    //   neighborhood (std::vector<int>): the index of the nodes in the neighborhood
 
     std::vector<int> neighborhood;
-    
-    
+        
     for(int i=0; i < tree.size() ; i++)
     {
         double dist = sqrt(pow(tree[i].x - node.x, 2)
@@ -430,7 +426,7 @@ std::vector<int> RRT::near(std::vector<Node> &tree, Node &node) {
         }
     }
 
-    // indexes are wrt tree
+    // indices are wrt tree
     return neighborhood;
 }
 
