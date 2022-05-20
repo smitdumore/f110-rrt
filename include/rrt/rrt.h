@@ -108,6 +108,9 @@ private:
     double local_lookahead_distance_;
     bool path_found_;
 
+    //RRT star
+    double search_radius_;
+
     //drive params
     double high_speed_;
     double medium_speed_;

@@ -22,6 +22,7 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     nh_.getParam("max_rrt_iters", max_rrt_iters_);
     nh_.getParam("goal_tolerance", goal_tolerance_);
     nh_.getParam("max_expansion_distance", max_expansion_distance_);
+    nh_.getParam("search_radius", search_radius_);
     nh_.getParam("collision_checking_points", collision_checking_points_);
     nh_.getParam("local_lookahead_distance", local_lookahead_distance_);
     nh_.getParam("high_speed", high_speed_);
@@ -432,7 +433,7 @@ std::vector<int> RRT::near(std::vector<Node> &tree, Node &node) {
         double dist = sqrt(pow(tree[i].x - node.x, 2)
                                + pow(tree[i].y - node.y, 2));
 
-        if(dist <= max_expansion_distance_)
+        if(dist <= search_radius_)
         {
             neighborhood.push_back(i);
         }
