@@ -151,10 +151,10 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
     if(path_found_ == true)
     {
-        ROS_ERROR("PATH FOUND__________________");
-        return;
-        /*
-        //viz_path(local_path_, pose_msg->pose);
+        
+        //ROS_ERROR("PATH FOUND__________________");
+    
+        viz_path(local_path_, pose_msg->pose);
                
         const auto trackpoint_and_distance =    
             get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
@@ -170,14 +170,19 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
         publish_corrected_speed_and_steering(steering_angle * 0.1);
 
+        // std::array<double , 2> local_trackpoint;
+        // local_trackpoint[0] = local_trackpoint_map_frame.position.x;
+        // local_trackpoint[0] = local_trackpoint_map_frame.position.y;
+        // viz_point(local_trackpoint, true);
+
         ROS_INFO_STREAM(distance);
 
-        if(distance < 0.2)
+        if(distance < 0.4)
         {
-            path_found_ = false;
+            //path_found_ = false;
         }
         return;
-        */
+        
     }
 
     current_x_ = pose_msg->pose.position.x;
@@ -187,7 +192,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     const auto trackpoint = get_best_global_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
     //publishing this point
-    //viz_point(trackpoint);
+    viz_point(trackpoint, true);
 
     std::vector<Node> tree;
 
@@ -198,7 +203,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     while(count < max_rrt_iters_){
         count++;
         
-        ros::Duration(0.008).sleep();
+        //ros::Duration(0.008).sleep();
 
         //sample a node
         auto sample_node = sample();
@@ -217,7 +222,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         //calculate cost of the node
         new_node.cost = cost(tree, new_node);
 
-        const auto current_node_index = tree.size();
+        //const auto current_node_index = tree.size();
 
         //check if edge is collision free
         if(is_edge_collided(tree[nearest_node_id], new_node))
@@ -238,7 +243,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         }
         
         //publish node 
-        viz_point(new_node);
+        //viz_point(new_node);
      
         //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
@@ -246,8 +251,10 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             // local path points are in map frame
             local_path_ = find_path(tree, new_node);
 
+            /** THIS PATH IS REVERSE ? **/
+
             //pulish line
-            viz_path(local_path_ ,pose_msg->pose );
+            
 
             ROS_WARN("RRT path found");
             // publish tree
@@ -340,22 +347,24 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
         
         // CYCLE DETECTION
         count++;
-        if(count >= max_rrt_iters_)
+        if(count > max_rrt_iters_)
         {   
             ROS_ERROR("CYCLE FOUND IN TREE");
             break;
         }
     }
+    
     return path;
 }
 
 std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std::array<double, 2> &current_pose){
 
-    geometry_msgs::Pose closest_point{};
+    geometry_msgs::Pose closest_point;
     double closest_distance_to_current_pose =std::numeric_limits<double>::max();
     double closest_distance = std::numeric_limits<double>::max();
 
     for(const auto& itr : local_path_){
+
         double dist = sqrt(pow(itr[0] - current_pose[0], 2)
                                + pow(itr[1] - current_pose[1], 2));
 
@@ -364,8 +373,14 @@ std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std:
         {
             closest_distance_to_current_pose = dist;
             closest_distance = diff_distance;
+
             closest_point.position.x = itr[0];
             closest_point.position.y = itr[1];
+            closest_point.position.z = 0;
+            closest_point.orientation.x = 0;
+            closest_point.orientation.y = 0;
+            closest_point.orientation.z = 0;
+            closest_point.orientation.w = 1;
         }
     }    
     return {closest_point, closest_distance_to_current_pose};
@@ -398,9 +413,9 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
 
         double cost_i = line_cost( tree.at( neighbor.at(i) ) , new_node);
         
-        if(tree.at(i).cost + cost_i < min_cost)
+        if(tree.at(neighbor.at(i)).cost + cost_i < min_cost)
         {   
-            min_cost = tree.at(i).cost + cost_i;
+            min_cost = tree.at(neighbor.at(i)).cost + cost_i;
             min_cost_idx = neighbor.at(i);
         }
     }
@@ -412,6 +427,7 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
     for(int i=0 ; i< neighbor.size() ; i++)
     {   
         // skipping over current parent of new node
+        // this will avoid a cycle
         if( is_edge_collided( new_node, tree.at( neighbor.at(i))) || i == min_cost_idx ) 
         {
             continue;
@@ -419,6 +435,7 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
 
         if(tree.at(neighbor.at(i)).cost > new_node.cost + tree.at(new_node.parent_index).cost)
         {
+            // new node index is the current tree size
             tree.at(neighbor.at(i)).parent_index = tree.size();
         }
     }

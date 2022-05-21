@@ -168,7 +168,7 @@ private:
 
     void rewire(std::vector<int> neigh_vec, std::vector<Node> &tree, Node &node);
 
-    void viz_point(Node global_point)
+    void viz_point(std::array<double, 2> point, bool lookahead)
 {
 
         visualization_msgs::Marker point_msg;
@@ -178,11 +178,16 @@ private:
         point_msg.pose.orientation.w = 1.0;
         point_msg.header.stamp = ros::Time::now();
 
-        point_msg.pose.position.x = global_point.x;
-        point_msg.pose.position.y = global_point.y;
+        point_msg.pose.position.x = point[0];
+        point_msg.pose.position.y = point[1];
         point_msg.pose.position.z = 0.0;
+        point_msg.pose.orientation.w = 1.0;
 
         point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.025;
+        if(lookahead)
+        {
+            point_msg.scale.x = point_msg.scale.y = point_msg.scale.z = 0.1;    
+        }
         point_msg.color.a = 1.0;
         point_msg.color.r = 0.0;
         point_msg.color.b = 1.0;
