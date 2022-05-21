@@ -20,6 +20,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   tf2_ros
 )
+find_package(xtensor REQUIRED)
+find_package(xtensor-interpolate REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -159,6 +161,8 @@ add_dependencies(rrt_node ${f110_rrt_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS
 # )
 target_link_libraries(rrt_node
   ${catkin_LIBRARIES}
+  xtensor
+  /usr/local/lib/libxfitpack.so
 )
 
 #############

@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 
+using namespace std;
 
 // Destructor of the RRT class
 RRT::~RRT() {
@@ -63,6 +64,7 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     line_pub_ = nh_.advertise<visualization_msgs::Marker>("show_rrt_path",1); 
     waypoint_pub_ = nh_.advertise<visualization_msgs::Marker>("show_global_waypoints",1);
     drive_pub_ = nh_.advertise<ackermann_msgs::AckermannDriveStamped>("drive",1);
+    spline_pub_ = nh_.advertise<visualization_msgs::Marker>("show_spline",1); 
 
     //map
     new_obstacles_ = {};
@@ -155,6 +157,11 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         //ROS_ERROR("PATH FOUND__________________");
     
         viz_path(local_path_, pose_msg->pose);
+
+        auto spline = smooth_path(local_path_, 100);
+        visualization_msgs::Marker path_marker = gen_path_marker(spline);
+
+        spline_pub_.publish(path_marker);
                
         const auto trackpoint_and_distance =    
             get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
@@ -168,12 +175,12 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             
         const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
 
-        publish_corrected_speed_and_steering(steering_angle * 0.1);
+        //publish_corrected_speed_and_steering(steering_angle * 0.1);
 
-        // std::array<double , 2> local_trackpoint;
-        // local_trackpoint[0] = local_trackpoint_map_frame.position.x;
-        // local_trackpoint[0] = local_trackpoint_map_frame.position.y;
-        // viz_point(local_trackpoint, true);
+        std::array<double , 2> local_trackpoint;
+        local_trackpoint[0] = local_trackpoint_map_frame.position.x;
+        local_trackpoint[1] = local_trackpoint_map_frame.position.y;
+        viz_point(local_trackpoint, true);
 
         ROS_INFO_STREAM(distance);
 
@@ -236,7 +243,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
         tree.emplace_back(new_node);
 
-        if(tree.size() >= max_rrt_iters_)
+        if(tree.size() > 2 * max_rrt_iters_)
         {
             ROS_ERROR("CYCLE FOUND TREE SIZE EXCEEDED");
             return;
@@ -270,7 +277,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 std::array<double ,2> RRT::sample() {
 
     std::uniform_real_distribution<>::param_type x_param(0, lookahead_distance_);
-    std::uniform_real_distribution<>::param_type y_param(-lookahead_distance_/2, lookahead_distance_/2);
+    std::uniform_real_distribution<>::param_type y_param(-lookahead_distance_, lookahead_distance_);
     x_dist.param(x_param);
     y_dist.param(y_param);
 
@@ -353,7 +360,10 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
             break;
         }
     }
-    
+    std::array<double ,2> temp;
+    temp[0] = tree[0].x;
+    temp[1] = tree[0].y;
+    path.emplace_back(temp);
     return path;
 }
 
@@ -377,10 +387,10 @@ std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std:
             closest_point.position.x = itr[0];
             closest_point.position.y = itr[1];
             closest_point.position.z = 0;
-            closest_point.orientation.x = 0;
-            closest_point.orientation.y = 0;
-            closest_point.orientation.z = 0;
-            closest_point.orientation.w = 1;
+            // closest_point.orientation.x = 0;
+            // closest_point.orientation.y = 0;
+            // closest_point.orientation.z = 0;
+            // closest_point.orientation.w = 1;
         }
     }    
     return {closest_point, closest_distance_to_current_pose};
@@ -593,4 +603,40 @@ void RRT::publish_corrected_speed_and_steering(double steering_angle)
     }
 
     drive_pub_.publish(drive_msg);
+}
+
+std::vector<std::array<double ,2>> RRT::smooth_path(std::vector<std::array<double, 2>> path, int discrete)
+{
+    if (path.size()>3) {
+        std::vector<double> x, y;
+        for (auto i = 0; i < path.size(); i++) {
+            x.push_back(float(path[i][0]));
+            y.push_back(float(path[i][1]));
+        }
+        xt::xarray<double> t = xt::linspace<double>(0,1,x.size());
+        xt::xarray<double> x_ = xt::adapt(x);
+        xt::xarray<double> y_ = xt::adapt(y);
+    
+        auto tck1 = xt::interpolate::splrep(t, x_, 3, 1.0);
+        auto tck2 = xt::interpolate::splrep(t, y_, 3, 1.0);
+        
+        xt::xarray<double> t_evaluate = xt::linspace<double>(0,1,discrete);
+
+        xt::xarray<double> xs = xt::interpolate::splev(t_evaluate, tck1);
+        xt::xarray<double> ys = xt::interpolate::splev(t_evaluate, tck2);
+
+        std::vector<double> x_vec(xs.begin(), xs.end()-1);
+        std::vector<double> y_vec(ys.begin(), ys.end()-1);
+
+        std::vector<std::array<double ,2>> convertedPath;
+        for (int i = 0; i < x_vec.size(); i++) {
+            std::array<double ,2> temp;
+            temp[0] = x_vec.at(i);
+            temp[1] = y_vec.at(i);
+            convertedPath.push_back(temp);
+        }
+        return convertedPath;
+        
+    }
+    return path;
 }

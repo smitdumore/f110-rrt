@@ -33,6 +33,12 @@
 #include <random>
 #include <limits>
 
+//spline 
+#include "xtensor/xbuilder.hpp"
+#include "xtensor/xtensor.hpp"
+#include "xtensor-interpolate/xinterpolate.hpp"
+#include "xtensor/xadapt.hpp"
+
 
 struct Node {
     Node() = default;
@@ -62,6 +68,7 @@ private:
     ros::Publisher line_pub_;
     ros::Publisher waypoint_pub_;
     ros::Publisher drive_pub_;
+    ros::Publisher spline_pub_;
 
     // tf stuff
     tf::TransformListener listener;
@@ -168,6 +175,8 @@ private:
 
     void rewire(std::vector<int> neigh_vec, std::vector<Node> &tree, Node &node);
 
+    std::vector<std::array<double ,2>> smooth_path(std::vector<std::array<double, 2>> path, int discrete);
+
     void viz_point(std::array<double, 2> point, bool lookahead)
 {
 
@@ -220,11 +229,52 @@ void viz_path(std::vector<std::array<double, 2>> local_path , geometry_msgs::Pos
             path.points.push_back(p);
         }
 
-        p = curr_pose.position;
-        path.points.push_back(p);
+        //p = curr_pose.position;
+        //path.points.push_back(p);
 
         line_pub_.publish(path);
         
+}
+
+visualization_msgs::Marker gen_path_marker(const std::vector<std::array<double,2>> &path)
+{
+    std::vector<geometry_msgs::Point> tree_points = in_order_path(path);
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = ros::Time();
+    marker.ns = "current";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.points = tree_points;
+    marker.scale.x = 0.05;
+    marker.scale.y = 0;
+    marker.scale.z = 0;
+    marker.color.a = 1.0; // Don't forget to set the alpha!
+    marker.color.r = 1.0;
+    marker.color.g = 0;
+    marker.color.b = 0;
+    return marker;
+    //return gen_markers(node_coords, 0, 1, 0);
+}
+
+
+std::vector<geometry_msgs::Point> in_order_path(std::vector<std::array<double,2>> path)
+{
+    std::vector<geometry_msgs::Point> path_points;
+    for (int ii = 0; ii < path.size(); ++ii)
+    {
+        geometry_msgs::Point curr;
+        curr.x = path[ii][0];
+        curr.y = path[ii][1];
+        curr.z = 0.15;
+        path_points.push_back(curr);
+    }
+    return path_points;
 }
 
 
