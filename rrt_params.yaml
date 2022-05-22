@@ -4,16 +4,16 @@ scan_topic: "scan"
 CSV_path: "/home/smit/test_ws/src/f110-rrt/levine.csv"
 
 # TODO: add Parameters for RRT
-lookahead_distance: 3.0
-inflation_radius: 4
+lookahead_distance: 4.0
+inflation_radius: 2
 max_rrt_iters: 2000
 max_expansion_distance: 1.0
 search_radius: 1.5
 collision_checking_points: 10
-goal_tolerance: 0.03
-local_lookahead_distance: 1.5
+goal_tolerance: 0.1
+local_lookahead_distance: 1.0  ## goal tolerance for path frezzing has to be greater then this 
 
 high_speed: 1.0
-medium_speed: 0.7
+medium_speed: 0.8
 low_speed: 0.5
 

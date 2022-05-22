@@ -60,6 +60,7 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     // ROS pub and sub
     pf_sub_ = nh_.subscribe("gt_pose", 10, &RRT::pf_callback, this);
     scan_sub_ = nh_.subscribe("scan", 10, &RRT::scan_callback, this);
+    sleep(1);
     dynamic_map_pub_ = nh_.advertise<nav_msgs::OccupancyGrid>("dynamic_map",1); 
     line_pub_ = nh_.advertise<visualization_msgs::Marker>("show_rrt_path",1); 
     waypoint_pub_ = nh_.advertise<visualization_msgs::Marker>("show_global_waypoints",1);
@@ -124,17 +125,17 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
 
         for(const auto& index: index_of_expanded_obstacles)
         {
-            //if(input_map_.data[index]  50)
-            //{
+            if(input_map_.data[index] !=  100)
+            {
                 input_map_.data[index] = 100;
                 new_obstacles_.emplace_back(index);
-            //}
+            }
         }
     }
 
     // local cost map clearing 
     clear_obstacles_count_++;
-    if(clear_obstacles_count_ > 10){
+    if(clear_obstacles_count_ > 50){
         for(const auto index: new_obstacles_){
             input_map_.data[index] = 0;
         }
@@ -150,19 +151,25 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
 }
 
 void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
-
+    
+    //ros::Duration(0.01).sleep();
+    
+    
     if(path_found_ == true)
     {
         
         //ROS_ERROR("PATH FOUND__________________");
     
-        viz_path(local_path_, pose_msg->pose);
+        //viz_path(local_path_, pose_msg->pose);
+
+        line_pub_.publish(tree_marker_);
+        waypoint_pub_.publish(node_marker_);
 
         auto spline = smooth_path(local_path_, 100);
         visualization_msgs::Marker path_marker = gen_path_marker(spline);
 
         spline_pub_.publish(path_marker);
-               
+        /*       
         const auto trackpoint_and_distance =    
             get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
@@ -175,22 +182,24 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             
         const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
 
-        //publish_corrected_speed_and_steering(steering_angle * 0.1);
-
+        publish_corrected_speed_and_steering(steering_angle);
+        
         std::array<double , 2> local_trackpoint;
         local_trackpoint[0] = local_trackpoint_map_frame.position.x;
         local_trackpoint[1] = local_trackpoint_map_frame.position.y;
         viz_point(local_trackpoint, true);
-
+        
         ROS_INFO_STREAM(distance);
 
-        if(distance < 0.4)
-        {
+        //if(distance < 0.01)
+        //{
             //path_found_ = false;
-        }
+        //}
+        */
         return;
         
     }
+    
 
     current_x_ = pose_msg->pose.position.x;
     current_y_ = pose_msg->pose.position.y;
@@ -210,8 +219,6 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     while(count < max_rrt_iters_){
         count++;
         
-        //ros::Duration(0.008).sleep();
-
         //sample a node
         auto sample_node = sample();
 
@@ -226,16 +233,17 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
         //move the current node closer 
         Node new_node = Steer(tree[nearest_node_id], nearest_node_id, sample_node);
 
-        //calculate cost of the node
-        new_node.cost = cost(tree, new_node);
-
-        //const auto current_node_index = tree.size();
+        const auto current_node_index = tree.size();
 
         //check if edge is collision free
         if(is_edge_collided(tree[nearest_node_id], new_node))
         {
             continue;
         }
+
+        //rrt STAR
+        //calculate cost of the node
+        new_node.cost = cost(tree, new_node);
 
         const auto neigh_vec = near(tree, new_node);
         
@@ -261,9 +269,37 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             /** THIS PATH IS REVERSE ? **/
 
             //pulish line
-            
+            /*
+            viz_path(local_path_, pose_msg->pose);
 
+            auto spline = smooth_path(local_path_, 100);
+            visualization_msgs::Marker path_marker = gen_path_marker(spline);
+
+            spline_pub_.publish(path_marker);
+               
+            const auto trackpoint_and_distance =    
+                get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
+
+            const auto local_trackpoint_map_frame = trackpoint_and_distance.first;
+            const double distance = trackpoint_and_distance.second;
+
+            geometry_msgs::Pose goal_way_point_car_frame;
+
+            tf2::doTransform(local_trackpoint_map_frame, goal_way_point_car_frame, tf_map_to_laser_);
+            
+            const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
+
+            publish_corrected_speed_and_steering(steering_angle);
+
+            std::array<double , 2> local_trackpoint;
+            local_trackpoint[0] = local_trackpoint_map_frame.position.x;
+            local_trackpoint[1] = local_trackpoint_map_frame.position.y;
+            viz_point(local_trackpoint, true);
+            
+            */
             ROS_WARN("RRT path found");
+            tree_marker_ = gen_tree_marker(tree, 0, 1, 0);
+            node_marker_ = gen_node_marker(tree, 0, 0, 1);
             // publish tree
 
             path_found_ = true;
@@ -404,7 +440,6 @@ double RRT::cost(std::vector<Node> &tree, Node &node)
 
 void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_node)
 {
-    double min_cost = std::numeric_limits<double>::max();
     int min_cost_idx = -1;
 
     if(neighbor.size() == 0)
@@ -423,14 +458,13 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
 
         double cost_i = line_cost( tree.at( neighbor.at(i) ) , new_node);
         
-        if(tree.at(neighbor.at(i)).cost + cost_i < min_cost)
+        if(tree.at(neighbor.at(i)).cost + cost_i < new_node.cost)
         {   
-            min_cost = tree.at(neighbor.at(i)).cost + cost_i;
+            new_node.cost = tree.at(neighbor.at(i)).cost + cost_i;
             min_cost_idx = neighbor.at(i);
+            new_node.parent_index = min_cost_idx;
         }
     }
-    new_node.parent_index = min_cost_idx;
-    new_node.cost = min_cost;
 
     // REWIRING
     // FIND IF NEW NODE CAN BE A LOW COST PARENT TO ANOTHER NODE ALREADY IN THE TREE 
@@ -443,7 +477,7 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
             continue;
         }
 
-        if(tree.at(neighbor.at(i)).cost > new_node.cost + tree.at(new_node.parent_index).cost)
+        if(tree.at(neighbor.at(i)).cost > new_node.cost + line_cost( new_node , tree.at(neighbor.at(i))) )
         {
             // new node index is the current tree size
             tree.at(neighbor.at(i)).parent_index = tree.size();
@@ -451,13 +485,13 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
     }
 }
 
-std::vector<int> RRT::near(std::vector<Node> &tree, Node &node) {
+std::vector<int> RRT::near(const std::vector<Node> &tree, Node &node) {
 
     std::vector<int> neighborhood;
         
     for(int i=0; i < tree.size() ; i++)
     {
-        double dist = sqrt(pow(tree[i].x - node.x, 2)
+        const double dist = sqrt(pow(tree[i].x - node.x, 2)
                                + pow(tree[i].y - node.y, 2));
 
         if(dist <= search_radius_)

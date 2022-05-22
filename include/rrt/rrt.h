@@ -48,7 +48,7 @@ struct Node {
 
     double x, y;
     int parent_index;
-    double cost;   
+    double cost;  //CUMULATIVE COST (COST TILL NOW) 
 };
 
 
@@ -117,6 +117,8 @@ private:
 
     //RRT star
     double search_radius_;
+    visualization_msgs::Marker tree_marker_;
+    visualization_msgs::Marker node_marker_;
 
     //drive params
     double high_speed_;
@@ -171,7 +173,7 @@ private:
 
     double line_cost(Node &n1, Node &n2);
 
-    std::vector<int> near(std::vector<Node> &tree, Node &node);
+    std::vector<int> near(const std::vector<Node> &tree, Node &node);
 
     void rewire(std::vector<int> neigh_vec, std::vector<Node> &tree, Node &node);
 
@@ -183,7 +185,7 @@ private:
         visualization_msgs::Marker point_msg;
         point_msg.header.frame_id = "map";
         point_msg.type = visualization_msgs::Marker::SPHERE;
-        point_msg.id = val_++;
+        //point_msg.id = val_++;
         point_msg.pose.orientation.w = 1.0;
         point_msg.header.stamp = ros::Time::now();
 
@@ -213,7 +215,7 @@ void viz_path(std::vector<std::array<double, 2>> local_path , geometry_msgs::Pos
         // path marker will be placed wrt map
         // path marker points are wrt map
         path.header.frame_id = "map";
-        path.id = val_++;
+        //path.id = val_++;
         path.type = visualization_msgs::Marker::LINE_STRIP;
         path.scale.x = path.scale.y = 0.03;
         path.action = visualization_msgs::Marker::ADD;
@@ -276,6 +278,81 @@ std::vector<geometry_msgs::Point> in_order_path(std::vector<std::array<double,2>
     }
     return path_points;
 }
+
+std::vector<geometry_msgs::Point> full_tree(const std::vector<Node> &tree)
+{
+    std::vector<geometry_msgs::Point> tree_points;
+    for (int i = 1; i < tree.size(); ++i)
+    {
+        geometry_msgs::Point one;
+        one.x = tree[i].x;
+        one.y = tree[i].y;
+        one.z = 0.1;
+        tree_points.push_back(one);
+        geometry_msgs::Point two;
+        two.x = tree[tree[i].parent_index].x;
+        two.y = tree[tree[i].parent_index].y;
+        two.z = 0.0;
+        tree_points.push_back(two);
+    }
+    return tree_points;
+}
+
+visualization_msgs::Marker gen_tree_marker(const std::vector<Node> &tree, float r, float g, float b)
+{
+    std::vector<geometry_msgs::Point> tree_points = full_tree(tree);
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = ros::Time();
+    marker.ns = "current";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.points = tree_points;
+    marker.scale.x = 0.02;
+    marker.scale.y = 0;
+    marker.scale.z = 0;
+    marker.color.a = 1.0; // Don't forget to set the alpha!
+    marker.color.r = r;
+    marker.color.g = g;
+    marker.color.b = b;
+    return marker;
+    //return gen_markers(node_coords, 0, 1, 0);
+}
+
+visualization_msgs::Marker gen_node_marker(const std::vector<Node> &tree, float r, float g, float b)
+{
+    std::vector<geometry_msgs::Point> tree_points = full_tree(tree);
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = ros::Time();
+    marker.ns = "current";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::SPHERE_LIST;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.pose.position.z = 0.1;
+    marker.points = tree_points;
+    marker.scale.x = 0.045;
+    marker.scale.y = 0.045;
+    marker.scale.z = 0.045;
+    marker.color.a = 1.0; // Don't forget to set the alpha!
+    marker.color.r = r;
+    marker.color.g = g;
+    marker.color.b = b;
+    return marker;
+    //return gen_markers(node_coords, 0, 1, 0);
+}
+
+
+
 
 
 };
