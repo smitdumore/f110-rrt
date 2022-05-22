@@ -1,6 +1,6 @@
 # f110-rrt
 rrt path planning in f1tenth simulator
-![Screenshot from 2022-05-21 18-53-07](https://user-images.githubusercontent.com/75038294/169653809-25344bc8-3f2a-4501-aac1-3b35c961e766.png)
+![Screenshot from 2022-05-22 10-05-36](https://user-images.githubusercontent.com/75038294/169678895-97a2faa0-5dca-4f59-ad21-c449f73d93bc.png)
 
 #installing xtensor
 1. conda install -c conda-forge xtensor
