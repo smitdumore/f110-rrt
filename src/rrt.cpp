@@ -7,16 +7,17 @@ using namespace std;
 
 // Destructor of the RRT class
 RRT::~RRT() {
-    // Do something in here, free up used memory, print message, etc.
+    // Do something in here, free up used memory
     ROS_INFO("RRT shutting down");
 }
 
 // Constructor of the RRT class
 RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_listener_(tf_buffer_){
 
+    // Reading ros parameters form the yaml file
     std::string pose_topic, scan_topic, CSV_path;
-    //nh_.getParam("/pose_topic", pose_topic);
-    //nh_.getParam("/scan_topic", scan_topic);
+    nh_.getParam("/pose_topic", pose_topic);
+    nh_.getParam("/scan_topic", scan_topic);
     nh_.getParam("lookahead_distance", lookahead_distance_);
     nh_.getParam("inflation_radius", inflation_radius_);
     nh_.getParam("CSV_path", CSV_path);
@@ -44,7 +45,7 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     map_cols_ = input_map_.info.width;
     map_resolution_ = input_map_.info.resolution; 
     
-    //read csv
+    //read global waypoints csv
     rrt::CSVReader reader(CSV_path);
     global_path_ = reader.getData();
 
@@ -57,10 +58,12 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
         ros::Duration(1.0).sleep();
     }  
 
-    // ROS pub and sub
-    pf_sub_ = nh_.subscribe("gt_pose", 10, &RRT::pf_callback, this);
-    scan_sub_ = nh_.subscribe("scan", 10, &RRT::scan_callback, this);
+    // subscribers
+    pf_sub_ = nh_.subscribe(pose_topic, 10, &RRT::pf_callback, this);
+    scan_sub_ = nh_.subscribe(scan_topic, 10, &RRT::scan_callback, this);
     sleep(1);
+
+    // publishers
     dynamic_map_pub_ = nh_.advertise<nav_msgs::OccupancyGrid>("dynamic_map",1); 
     line_pub_ = nh_.advertise<visualization_msgs::Marker>("show_rrt_path",1); 
     waypoint_pub_ = nh_.advertise<visualization_msgs::Marker>("show_global_waypoints",1);
@@ -78,14 +81,25 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     ROS_INFO("Created new RRT Object.");
 }
 
-int RRT::get_row_major_index(const double x_map, const double y_map){
+/**
+ * @brief This function takes the x,y coordinates of a map cell and 
+ * returns the row major index of that cell in the map vector 
+ * @return index
+ */
+int RRT::get_row_major_index(const double x_map, const double y_map)
+{
     const auto x_index = static_cast<int>((x_map - input_map_.info.origin.position.x)/input_map_.info.resolution);
     const auto y_index = static_cast<int>((y_map - input_map_.info.origin.position.y)/input_map_.info.resolution);
     return y_index*map_cols_ + x_index; 
 }
 
-void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
-   
+/**
+ * @brief This function recieves latest laser scans.
+ * The occupancy grid is updated here
+ * @param pointer to scan_msg 
+ */
+void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) 
+{   
     try
     {
         tf_laser_to_map_ = tf_buffer_.lookupTransform("map", "laser", ros::Time(0));
@@ -95,14 +109,17 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
         ROS_ERROR("%s",ex.what());
         ros::Duration(0.1).sleep();
     }
+
     const auto translation = tf_laser_to_map_.transform.translation;
     const double yaw = tf::getYaw(tf_laser_to_map_.transform.rotation);
 
+    // field of view(fov) of the robot
     const auto start = static_cast<int>(scan_msg->ranges.size()/6);
     const auto end = static_cast<int>(5*scan_msg->ranges.size()/6); 
     const double angle_increment = scan_msg->angle_increment;
     double theta = scan_msg->angle_min + angle_increment*start;
 
+    // looping through all the scans in fov  
     for(int i=start; i < end; i++){
 
         theta += angle_increment;
@@ -119,10 +136,10 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
         const double x_map = x_base_link*cos(yaw) - y_base_link*sin(yaw) + translation.x;
         const double y_map = x_base_link*sin(yaw) + y_base_link*cos(yaw) + translation.y;
 
-        //const int map_idx = xy_to_grid(std::make_pair(x_map, y_map));
-
+        // getting indices of inflated cells
         std::vector<int> index_of_expanded_obstacles = get_expanded_row_major_indices(x_map, y_map);
 
+        // marking inflated cells as occupied
         for(const auto& index: index_of_expanded_obstacles)
         {
             if(input_map_.data[index] !=  100)
@@ -141,35 +158,34 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
         }
         new_obstacles_.clear();
         clear_obstacles_count_ = 0;
-        //ROS_INFO("Obstacles Cleared");
     }
          
-
+    // Publishing local cost map
     dynamic_map_pub_.publish(input_map_);
-    //ROS_INFO("Map Updated");
-    
 }
 
-void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
-    
-    //ros::Duration(0.01).sleep();
-    
-    
+/**
+ * @brief This function recieves latest robot pose in map frame, typically from a particle filter
+ * RRT main loop is also present in this function
+ * @param pointer to pose_msg 
+ */
+void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
+{    
     if(path_found_ == true)
-    {
-        
-        //ROS_ERROR("PATH FOUND__________________");
+    {       
+        ROS_ERROR("Following the local path");
     
         //viz_path(local_path_, pose_msg->pose);
 
-        line_pub_.publish(tree_marker_);
-        waypoint_pub_.publish(node_marker_);
+        //line_pub_.publish(tree_marker_);
+        //waypoint_pub_.publish(node_marker_);
 
         auto spline = smooth_path(local_path_, 100);
         visualization_msgs::Marker path_marker = gen_path_marker(spline);
 
         spline_pub_.publish(path_marker);
-        /*       
+
+        // Executing Pure Pursuit control   
         const auto trackpoint_and_distance =    
             get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
@@ -182,47 +198,48 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             
         const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
 
+        // publihsing pure pursuit velocity and steering angle
         publish_corrected_speed_and_steering(steering_angle);
         
-        std::array<double , 2> local_trackpoint;
-        local_trackpoint[0] = local_trackpoint_map_frame.position.x;
-        local_trackpoint[1] = local_trackpoint_map_frame.position.y;
-        viz_point(local_trackpoint, true);
+        //std::array<double , 2> local_trackpoint;
+        //local_trackpoint[0] = local_trackpoint_map_frame.position.x;
+        //local_trackpoint[1] = local_trackpoint_map_frame.position.y;
+        //viz_point(local_trackpoint, true);
         
-        ROS_INFO_STREAM(distance);
+        //ROS_INFO_STREAM(distance);
 
-        //if(distance < 0.01)
-        //{
-            //path_found_ = false;
-        //}
-        */
-        return;
-        
+        if(distance < 0.01)
+        {
+            path_found_ = false;
+        }
+        return;  
     }
     
-
+    // Updating current pose
     current_x_ = pose_msg->pose.position.x;
     current_y_ = pose_msg->pose.position.y;
 
-    // PP point
+    // Goal point for RRT algorithm
     const auto trackpoint = get_best_global_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
 
     //publishing this point
     viz_point(trackpoint, true);
 
+    // RRT tree
     std::vector<Node> tree;
 
-    // setting root node cost as 0.0 and parent index as -1
+    // setting root node cost as 0.0 and its parent index as -1
     tree.emplace_back(Node(pose_msg->pose.position.x, pose_msg->pose.position.y, -1, 0.0));    
 
     int count=0;
+    // Main RRT loop
     while(count < max_rrt_iters_){
         count++;
         
         //sample a node
         auto sample_node = sample();
 
-        // check collision
+        // check is node is occupied
         if(is_collided(sample_node[0], sample_node[1])){
             continue;
         }
@@ -241,14 +258,17 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             continue;
         }
 
-        //rrt STAR
+        //RRT STAR
         //calculate cost of the node
         new_node.cost = cost(tree, new_node);
 
+        // get neighbouring nodes for the current node
         const auto neigh_vec = near(tree, new_node);
         
+        // rewire neighbouring nodes
         rewire(neigh_vec, tree, new_node);
 
+        // add current node to the tree
         tree.emplace_back(new_node);
 
         if(tree.size() > 2 * max_rrt_iters_)
@@ -257,49 +277,17 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
             return;
         }
         
-        //publish node 
-        //viz_point(new_node);
-     
+
         //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
 
-            // local path points are in map frame
+            // backtracking path
             local_path_ = find_path(tree, new_node);
 
-            /** THIS PATH IS REVERSE ? **/
-
-            //pulish line
-            /*
-            viz_path(local_path_, pose_msg->pose);
-
-            auto spline = smooth_path(local_path_, 100);
-            visualization_msgs::Marker path_marker = gen_path_marker(spline);
-
-            spline_pub_.publish(path_marker);
-               
-            const auto trackpoint_and_distance =    
-                get_best_local_trackpoint({pose_msg->pose.position.x,pose_msg->pose.position.y});
-
-            const auto local_trackpoint_map_frame = trackpoint_and_distance.first;
-            const double distance = trackpoint_and_distance.second;
-
-            geometry_msgs::Pose goal_way_point_car_frame;
-
-            tf2::doTransform(local_trackpoint_map_frame, goal_way_point_car_frame, tf_map_to_laser_);
-            
-            const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
-
-            publish_corrected_speed_and_steering(steering_angle);
-
-            std::array<double , 2> local_trackpoint;
-            local_trackpoint[0] = local_trackpoint_map_frame.position.x;
-            local_trackpoint[1] = local_trackpoint_map_frame.position.y;
-            viz_point(local_trackpoint, true);
-            
-            */
-            ROS_WARN("RRT path found");
+            ROS_WARN("RRT path found, freezing this path");
             tree_marker_ = gen_tree_marker(tree, 0, 1, 0);
             node_marker_ = gen_node_marker(tree, 0, 0, 1);
+
             // publish tree
 
             path_found_ = true;
@@ -310,8 +298,13 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
 
 }
 
+/**
+ * @brief randomly generates a point in map frame
+ * @return std::array<double, 2> 
+ */
 std::array<double ,2> RRT::sample() {
 
+    // sampling is biased towards the positive x direction
     std::uniform_real_distribution<>::param_type x_param(0, lookahead_distance_);
     std::uniform_real_distribution<>::param_type y_param(-lookahead_distance_, lookahead_distance_);
     x_dist.param(x_param);
@@ -325,14 +318,18 @@ std::array<double ,2> RRT::sample() {
     sample_point.orientation.y = 0;
     sample_point.orientation.z = 0;
     sample_point.orientation.w = 1;
+
+    // sampled point is transformed to map frame
     tf2::doTransform(sample_point, sample_point, tf_laser_to_map_);
-
-
-    // Sampled points are returned in map frame
     return {sample_point.position.x, sample_point.position.y};
 }
 
-
+/**
+ * @brief returns the index of node in the tree vector that is nearest to the node that is passed in the function 
+ * @param tree - tree vector
+ * @param sampled_point - sampled point in free space
+ * @return int - index in tree vector
+ */
 int RRT::nearest(std::vector<Node> &tree, std::array<double,2> &sampled_point) {
 
     int nearest_node = 0;
@@ -345,10 +342,15 @@ int RRT::nearest(std::vector<Node> &tree, std::array<double,2> &sampled_point) {
             nearest_node_distance = dist;
         }
     }
-
     return nearest_node;
 }
 
+/**
+ * @brief Expands the tree towards the sample point (within a max distance)
+ * @param nearest_node - nearest node to the sampled point
+ * @param sampled_point - sampled point in free space
+ * @return Node - new node
+ */
 Node RRT::Steer(Node &nearest_node, const int nearest_node_index, std::array<double, 2> &sampled_point) {
     
     const double x_diff = sampled_point[0] - nearest_node.x;
@@ -371,12 +373,25 @@ Node RRT::Steer(Node &nearest_node, const int nearest_node_index, std::array<dou
     return new_node;
 }
 
+/**
+ * @brief Checks if the lastest added node is the goal node or not
+ * @param latest_added_node 
+ * @param goal_x - x coordinate of goal in map 
+ * @param goal_y - y coordinate of goal in map
+ * @return true/false
+ */
 bool RRT::is_goal(Node &latest_added_node, double goal_x, double goal_y) {
     
     const double distance = sqrt(pow(latest_added_node.x - goal_x,2)+pow(latest_added_node.y - goal_y,2));
     return distance < goal_tolerance_;
 }
 
+/**
+ * @brief Backtracks the tree from goal node to root node 
+ * @param tree - rrt tree vector
+ * @param latest_added_node - goal node
+ * @return std::vector<std::array<double ,2>> - rrt solution path 
+ */
 std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node &latest_added_node) {
     
     std::vector<std::array<double ,2>> path;
@@ -388,7 +403,7 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
         path.emplace_back(node_xy);
         current_node = tree[current_node.parent_index];
         
-        // CYCLE DETECTION
+        // cycle detection
         count++;
         if(count > max_rrt_iters_)
         {   
@@ -403,6 +418,11 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
     return path;
 }
 
+/**
+ * @brief Get the best local trackpoint from the local path for pure pursuit following
+ * This local point is atleast one local lookahead distance away from the robot 
+ * @return std::pair<geometry_msgs::Pose, double> 
+ */
 std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std::array<double, 2> &current_pose){
 
     geometry_msgs::Pose closest_point;
@@ -433,11 +453,24 @@ std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std:
 }
 
 // RRT* methods
+
+/**
+ * @brief Calcutes the cumulative cost of node from the root of the tree
+ * @param tree - tree vector
+ * @param node - current node 
+ * @return double - calculated cost
+ */
 double RRT::cost(std::vector<Node> &tree, Node &node)
 {
     return tree[node.parent_index].cost + line_cost (tree[node.parent_index], node);
 }
 
+/**
+ * @brief Connects the current node to the least cost parent and finds a child for the current node if feasible
+ * @param neigh_vec - vector of nodes that lie in the search radius of the current node
+ * @param tree - tree vector
+ * @param node - current node 
+ */
 void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_node)
 {
     int min_cost_idx = -1;
@@ -485,6 +518,12 @@ void RRT::rewire(std::vector<int> neighbor, std::vector<Node> &tree, Node &new_n
     }
 }
 
+/**
+ * @brief Returns a vector of nodes that lie within a search radius of the current node
+ * @param tree - tree vector
+ * @param node - current node
+ * @return std::vector<int> - vector of indices of nodes inside the radius
+ */
 std::vector<int> RRT::near(const std::vector<Node> &tree, Node &node) {
 
     std::vector<int> neighborhood;
@@ -504,11 +543,22 @@ std::vector<int> RRT::near(const std::vector<Node> &tree, Node &node) {
     return neighborhood;
 }
 
+/**
+ * @brief Calculates the cost between two nodes
+ * @param n1 - node 1
+ * @param n2 - nopde 2
+ * @return double - calculated cost
+ */
 double RRT::line_cost(Node &n1, Node &n2) 
 {
     return sqrt(pow(n1.x - n2.x, 2) + pow(n1.y - n2.y, 2));
 }
 
+/**
+ * @brief This function inflates all the occupied indices in the map and returns all the indices of the cells
+ * that have been inflated  
+ * @return vector of indices 
+ */
 std::vector<int> RRT::get_expanded_row_major_indices(const double x_map, const double y_map)
 {
     std::vector<int> expanded_row_major_indices;
@@ -526,6 +576,11 @@ std::vector<int> RRT::get_expanded_row_major_indices(const double x_map, const d
     return expanded_row_major_indices;
 }
 
+/**
+ * @brief This function returns the x,y cordinates of a point the the global path
+ * This point is atleast one lookahed distance away from the robot
+ * @return std::array<double, 2> 
+ */
 std::array<double, 2> RRT::get_best_global_trackpoint(const std::array<double, 2>& current_pose){
 
     try{
@@ -567,12 +622,20 @@ std::array<double, 2> RRT::get_best_global_trackpoint(const std::array<double, 2
     return global_path_[best_trackpoint_index];
 }
 
+/**
+ * @brief Checks if a randomly generated node is free or occupied
+ * @param x,y coordinates of node in map frame
+ */
 bool RRT::is_collided(const double x_map, const double y_map)
 {
     const auto index = get_row_major_index(x_map, y_map);
     return input_map_.data[index] == 100;
 }
 
+/**
+ * @brief Checks if a edge connecting two nodes is free or occupied
+ * @param x,y coordinates of both nodes in map frame
+ */
 bool RRT::is_edge_collided(const Node &nearest_node, const Node &new_node){
     
     double x_increment = (new_node.x - nearest_node.x)/collision_checking_points_;
@@ -593,7 +656,10 @@ bool RRT::is_edge_collided(const Node &nearest_node, const Node &new_node){
     return false;
 }
 
-
+/**
+ * @brief This function publishes the drive messages to the robot
+ * linear velocity is inversely proportional to the steering angle
+ */
 void RRT::publish_corrected_speed_and_steering(double steering_angle)
 {
     ackermann_msgs::AckermannDriveStamped drive_msg;
@@ -639,6 +705,12 @@ void RRT::publish_corrected_speed_and_steering(double steering_angle)
     drive_pub_.publish(drive_msg);
 }
 
+/**
+ * @brief Fits a cubic spline through the rrt solution points
+ * @param path - rrt solution path
+ * @param discrete - number of partitions 
+ * @return std::vector<std::array<double ,2>> - spline points 
+ */
 std::vector<std::array<double ,2>> RRT::smooth_path(std::vector<std::array<double, 2>> path, int discrete)
 {
     if (path.size()>3) {
