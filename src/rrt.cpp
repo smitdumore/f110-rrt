@@ -137,10 +137,10 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg)
         const double y_map = x_base_link*sin(yaw) + y_base_link*cos(yaw) + translation.y;
 
         // getting indices of inflated cells
-        std::vector<int> index_of_expanded_obstacles = get_expanded_row_major_indices(x_map, y_map);
+        std::vector<int> index_of_inflated_obstacles = get_inflated_row_major_indices(x_map, y_map);
 
         // marking inflated cells as occupied
-        for(const auto& index: index_of_expanded_obstacles)
+        for(const auto& index: index_of_inflated_obstacles)
         {
             if(input_map_.data[index] !=  100)
             {
@@ -199,7 +199,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
         const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
 
         // publihsing pure pursuit velocity and steering angle
-        publish_corrected_speed_and_steering(steering_angle);
+        execute_control(steering_angle);
         
         //std::array<double , 2> local_trackpoint;
         //local_trackpoint[0] = local_trackpoint_map_frame.position.x;
@@ -559,9 +559,9 @@ double RRT::line_cost(Node &n1, Node &n2)
  * that have been inflated  
  * @return vector of indices 
  */
-std::vector<int> RRT::get_expanded_row_major_indices(const double x_map, const double y_map)
+std::vector<int> RRT::get_inflated_row_major_indices(const double x_map, const double y_map)
 {
-    std::vector<int> expanded_row_major_indices;
+    std::vector<int> inflated_row_major_indices;
     const auto x_index = static_cast<int>((x_map - input_map_.info.origin.position.x)/input_map_.info.resolution);
     const auto y_index = static_cast<int>((y_map - input_map_.info.origin.position.y)/input_map_.info.resolution);
 
@@ -569,11 +569,11 @@ std::vector<int> RRT::get_expanded_row_major_indices(const double x_map, const d
 
         for(int j=-inflation_radius_ + y_index; j< inflation_radius_ +1 + y_index ; j++){
 
-            expanded_row_major_indices.emplace_back(j*map_cols_ + i);
+            inflated_row_major_indices.emplace_back(j*map_cols_ + i);
         }
     }
 
-    return expanded_row_major_indices;
+    return inflated_row_major_indices;
 }
 
 /**
@@ -660,7 +660,7 @@ bool RRT::is_edge_collided(const Node &nearest_node, const Node &new_node){
  * @brief This function publishes the drive messages to the robot
  * linear velocity is inversely proportional to the steering angle
  */
-void RRT::publish_corrected_speed_and_steering(double steering_angle)
+void RRT::execute_control(double steering_angle)
 {
     ackermann_msgs::AckermannDriveStamped drive_msg;
     drive_msg.header.stamp = ros::Time::now();

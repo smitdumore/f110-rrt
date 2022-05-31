@@ -170,7 +170,7 @@ private:
      * that have been inflated  
      * @return vector of indices 
      */
-    std::vector<int> get_expanded_row_major_indices(const double, const double);
+    std::vector<int> get_inflated_row_major_indices(const double, const double);
     
     /**
      * @brief This function returns the x,y cordinates of a point the the global path
@@ -195,7 +195,7 @@ private:
      * @brief This function publishes the drive messages to the robot
      * linear velocity is inversely proportional to the steering angle
      */
-    void publish_corrected_speed_and_steering(double );
+    void execute_control(double );
 
     /**
      * @brief randomly generates a point in map frame
