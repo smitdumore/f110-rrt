@@ -376,9 +376,9 @@ private:
         marker.scale.y = 0;
         marker.scale.z = 0;
         marker.color.a = 1.0; // Don't forget to set the alpha!
-        marker.color.r = 1.0;
-        marker.color.g = 0;
-        marker.color.b = 0;
+        marker.color.r = 0.4;
+        marker.color.g = 1.0;
+        marker.color.b = 0.0;
         return marker;
         //return gen_markers(node_coords, 0, 1, 0);
 }
@@ -452,7 +452,7 @@ private:
         marker.scale.x = 0.02;
         marker.scale.y = 0;
         marker.scale.z = 0;
-        marker.color.a = 1.0; // Don't forget to set the alpha!
+        marker.color.a = 0.5; // Don't forget to set the alpha!
         marker.color.r = r;
         marker.color.g = g;
         marker.color.b = b;
@@ -486,7 +486,7 @@ private:
         marker.scale.x = 0.045;
         marker.scale.y = 0.045;
         marker.scale.z = 0.045;
-        marker.color.a = 1.0; // Don't forget to set the alpha!
+        marker.color.a = 0.5; // Don't forget to set the alpha!
         marker.color.r = r;
         marker.color.g = g;
         marker.color.b = b;

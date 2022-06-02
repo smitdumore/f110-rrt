@@ -177,8 +177,8 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
     
         //viz_path(local_path_, pose_msg->pose);
 
-        //line_pub_.publish(tree_marker_);
-        //waypoint_pub_.publish(node_marker_);
+        line_pub_.publish(tree_marker_);
+        waypoint_pub_.publish(node_marker_);
 
         auto spline = smooth_path(local_path_, 100);
         visualization_msgs::Marker path_marker = gen_path_marker(spline);
@@ -285,7 +285,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
             local_path_ = find_path(tree, new_node);
 
             ROS_WARN("RRT path found, freezing this path");
-            tree_marker_ = gen_tree_marker(tree, 0, 1, 0);
+            tree_marker_ = gen_tree_marker(tree, 1, 0, 0);
             node_marker_ = gen_node_marker(tree, 0, 0, 1);
 
             // publish tree
