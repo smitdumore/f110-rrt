@@ -201,14 +201,14 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
         // publihsing pure pursuit velocity and steering angle
         execute_control(steering_angle);
         
-        //std::array<double , 2> local_trackpoint;
-        //local_trackpoint[0] = local_trackpoint_map_frame.position.x;
-        //local_trackpoint[1] = local_trackpoint_map_frame.position.y;
-        //viz_point(local_trackpoint, true);
+        std::array<double , 2> local_trackpoint;
+        local_trackpoint[0] = local_trackpoint_map_frame.position.x;
+        local_trackpoint[1] = local_trackpoint_map_frame.position.y;
+        viz_point(local_trackpoint, true);
         
         //ROS_INFO_STREAM(distance);
 
-        if(distance < 0.01)
+        if(distance < 0.45)
         {
             path_found_ = false;
         }
@@ -277,10 +277,10 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
             return;
         }
         
-
+	cout << "running\n";
         //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
-
+		
             // backtracking path
             local_path_ = find_path(tree, new_node);
 
@@ -425,11 +425,26 @@ std::vector<std::array<double , 2>> RRT::find_path(std::vector<Node> &tree, Node
  */
 std::pair<geometry_msgs::Pose, double> RRT::get_best_local_trackpoint(const std::array<double, 2> &current_pose){
 
+    try{
+        tf_map_to_laser_ = tf_buffer_.lookupTransform("laser", "map", ros::Time(0));
+    }
+    catch(tf::TransformException& ex){
+        ROS_ERROR("%s", ex.what());
+        ros::Duration(0.1).sleep();
+    }
+
+    geometry_msgs::Point goal_way_point;
     geometry_msgs::Pose closest_point;
     double closest_distance_to_current_pose =std::numeric_limits<double>::max();
     double closest_distance = std::numeric_limits<double>::max();
 
     for(const auto& itr : local_path_){
+        
+	goal_way_point.x = itr[0];
+	goal_way_point.y = itr[1];
+
+	tf2::doTransform(goal_way_point, goal_way_point, tf_map_to_laser_);
+        if(goal_way_point.x < 0){continue;}
 
         double dist = sqrt(pow(itr[0] - current_pose[0], 2)
                                + pow(itr[1] - current_pose[1], 2));
