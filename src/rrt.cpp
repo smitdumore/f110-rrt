@@ -30,6 +30,7 @@ RRT::RRT(ros::NodeHandle &nh): nh_(nh), gen((std::random_device())()) , tf2_list
     nh_.getParam("high_speed", high_speed_);
     nh_.getParam("medium_speed", medium_speed_);
     nh_.getParam("low_speed", low_speed_);
+    nh_.getParam("path_reach_tol", path_reach_tol_);
 
     // get the map
     input_map_ = *(ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("map", ros::Duration(2.0)));
@@ -173,7 +174,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
 {    
     if(path_found_ == true)
     {       
-        ROS_ERROR("Following the local path");
+        //ROS_ERROR("Following the local path");
     
         //viz_path(local_path_, pose_msg->pose);
 
@@ -181,6 +182,8 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
         waypoint_pub_.publish(node_marker_);
 
         auto spline = smooth_path(local_path_, 100);
+	    local_path_ = spline;
+
         visualization_msgs::Marker path_marker = gen_path_marker(spline);
 
         spline_pub_.publish(path_marker);
@@ -198,7 +201,9 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
             
         const double steering_angle = 2*(goal_way_point_car_frame.position.y)/pow(distance, 2);
 
-        // publihsing pure pursuit velocity and steering angle
+	    //ros::Duration(0.01).sleep();
+
+        // publishing pure pursuit velocity and steering angle
         execute_control(steering_angle);
         
         std::array<double , 2> local_trackpoint;
@@ -206,12 +211,15 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
         local_trackpoint[1] = local_trackpoint_map_frame.position.y;
         viz_point(local_trackpoint, true);
         
-        //ROS_INFO_STREAM(distance);
-
-        if(distance < 0.45)
-        {
+	
+	//double dist = sqrt(pow(pose_msg->pose.position.x - spline.back().at(0) ,2) - pow(pose_msg->pose.position.y - spline.back().at(1), 2));
+	
+	//ROS_INFO_STREAM(dist);
+	
+        //if(dist < path_reach_tol_)
+        //{
             path_found_ = false;
-        }
+        //}
         return;  
     }
     
@@ -277,7 +285,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &pose_msg)
             return;
         }
         
-	cout << "running\n";
+	//cout << "running\n";
         //check if new node is the goal
         if(is_goal(new_node ,trackpoint[0], trackpoint[1])){
 		

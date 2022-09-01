@@ -127,6 +127,7 @@ private:
     double goal_tolerance_;
     double local_lookahead_distance_;
     bool path_found_;
+    double path_reach_tol_;
 
     //RRT star
     double search_radius_;
@@ -331,7 +332,8 @@ private:
         path.header.frame_id = "map";
         //path.id = val_++;
         path.type = visualization_msgs::Marker::LINE_STRIP;
-        path.scale.x = path.scale.y = 0.03;
+        path.scale.x = 0.03; 
+        path.scale.y = 0.06;
         path.action = visualization_msgs::Marker::ADD;
         path.color.g = 1.0;
         path.color.a = 1.0;
@@ -372,13 +374,14 @@ private:
         marker.pose.orientation.z = 0.0;
         marker.pose.orientation.w = 1.0;
         marker.points = tree_points;
-        marker.scale.x = 0.05;
-        marker.scale.y = 0;
+        marker.scale.x = 0.06;
+        marker.scale.y = 0.06;
         marker.scale.z = 0;
         marker.color.a = 1.0; // Don't forget to set the alpha!
-        marker.color.r = 0.4;
+        marker.color.r = 0.0;
         marker.color.g = 1.0;
-        marker.color.b = 0.0;
+        marker.color.b = 0.5;
+        marker.pose.position.z = -0.01;
         return marker;
         //return gen_markers(node_coords, 0, 1, 0);
 }
@@ -452,7 +455,7 @@ private:
         marker.scale.x = 0.02;
         marker.scale.y = 0;
         marker.scale.z = 0;
-        marker.color.a = 0.5; // Don't forget to set the alpha!
+        marker.color.a = 0.35; // Don't forget to set the alpha!
         marker.color.r = r;
         marker.color.g = g;
         marker.color.b = b;
@@ -486,7 +489,7 @@ private:
         marker.scale.x = 0.045;
         marker.scale.y = 0.045;
         marker.scale.z = 0.045;
-        marker.color.a = 0.5; // Don't forget to set the alpha!
+        marker.color.a = 0.35; // Don't forget to set the alpha!
         marker.color.r = r;
         marker.color.g = g;
         marker.color.b = b;

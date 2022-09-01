@@ -11,7 +11,8 @@ max_expansion_distance: 0.2
 search_radius: 0.5
 collision_checking_points: 10
 goal_tolerance: 0.2
-local_lookahead_distance: 1.0  # goal tolerance for path frezzing has to be greater than this 
+local_lookahead_distance: 0.5  # goal tolerance for path frezzing has to be greater than this 
+path_reach_tol: 0.2
 
 high_speed: 2.0
 medium_speed: 1.5
